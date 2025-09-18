@@ -97,7 +97,7 @@ export default function HomePage() {
           </Badge>
           
           <h1 className="text-5xl md:text-6xl font-bold text-gray-900">
-            Islamic Death Records{' '}
+            Islamic Death Records and{' '}
             <span className="text-emerald-600">System</span>
           </h1>
           
