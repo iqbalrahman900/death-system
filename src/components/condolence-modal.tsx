@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useRef } from 'react'
+import toast from 'react-hot-toast'
 import {
   Dialog,
   DialogContent,
@@ -15,7 +16,9 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Upload, Download, Eye, User, Plus, Sparkles } from 'lucide-react'
+import { Upload, Download, Eye, User, Plus, Sparkles, Loader2 } from 'lucide-react'
+import { databaseService } from '@/lib/database-service'
+import type { DeathRecord } from '@/lib/supabase'
 
 interface FormData {
   fullName: string
@@ -26,15 +29,8 @@ interface FormData {
   customMessage: string
 }
 
-interface CondolenceCard {
-  id: string
-  name: string
-  imageUrl: string
-  createdAt: string
-}
-
 interface CondolenceModalProps {
-  onCardCreated: (card: CondolenceCard) => void
+  onCardCreated: (card: DeathRecord) => void
 }
 
 export default function CondolenceModal({ onCardCreated }: CondolenceModalProps) {
@@ -45,13 +41,14 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
     dateOfDeath: '',
     age: '',
     placeOfDeath: '',
-    customMessage: 'May his/her soul be showered with mercy and placed among the righteous.'
+    customMessage: 'May their soul be blessed with mercy and placed among the righteous believers.'
   })
   
   const [uploadedImage, setUploadedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState('')
   const [generatedImage, setGeneratedImage] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -71,25 +68,32 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
 
   const generateCondolenceImage = () => {
     if (!uploadedImage || !formData.fullName) {
-      alert('Please upload an image and enter the full name')
+      toast.error('Please upload an image and enter full name')
       return
     }
 
     setIsGenerating(true)
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas) {
+      setIsGenerating(false)
+      return
+    }
 
     const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    if (!ctx) {
+      setIsGenerating(false)
+      return
+    }
 
     const img = new Image()
     
     img.onload = () => {
       try {
+        // Set canvas size
         canvas.width = 600
         canvas.height = 800
         
-        // Clear canvas
+        // Clear canvas completely
         ctx.clearRect(0, 0, canvas.width, canvas.height)
         
         // Black background
@@ -100,35 +104,46 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
         ctx.fillStyle = '#FFFFFF'
         ctx.font = 'bold 32px Arial, sans-serif'
         ctx.textAlign = 'center'
+        ctx.textBaseline = 'alphabetic'
         ctx.fillText('AL FATIHAH', canvas.width / 2, 60)
         
         // Arabic text
         ctx.font = '28px Arial, sans-serif'
         ctx.fillText('إِنَّا لِلَّهِ وَإِنَّا إِلَيْهِ رَاجِعُونَ', canvas.width / 2, 120)
         
-        // Circular photo
+        // Draw circular photo
         const centerX = canvas.width / 2
         const centerY = 300
         const radius = 120
         
+        // Create circular clip for photo
         ctx.save()
         ctx.beginPath()
         ctx.arc(centerX, centerY, radius, 0, Math.PI * 2)
+        ctx.closePath()
         ctx.clip()
         
+        // Calculate image dimensions to fill circle properly
         const aspectRatio = img.width / img.height
-        let drawWidth = radius * 2.2
+        let drawWidth = radius * 2.4
         let drawHeight = drawWidth / aspectRatio
         
-        if (drawHeight < radius * 2.2) {
-          drawHeight = radius * 2.2
+        if (drawHeight < radius * 2.4) {
+          drawHeight = radius * 2.4
           drawWidth = drawHeight * aspectRatio
         }
         
-        ctx.drawImage(img, centerX - drawWidth/2, centerY - drawHeight/2, drawWidth, drawHeight)
+        // Draw the uploaded image
+        ctx.drawImage(
+          img, 
+          centerX - drawWidth/2, 
+          centerY - drawHeight/2, 
+          drawWidth, 
+          drawHeight
+        )
         ctx.restore()
         
-        // Circle border
+        // Draw white circle border around photo
         ctx.beginPath()
         ctx.arc(centerX, centerY, radius, 0, Math.PI * 2)
         ctx.strokeStyle = '#FFFFFF'
@@ -138,12 +153,13 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
         // Name
         ctx.fillStyle = '#FFFFFF'
         ctx.font = 'bold 28px Arial, sans-serif'
+        ctx.textAlign = 'center'
         ctx.fillText(formData.fullName.toUpperCase(), centerX, 460)
         
         // Dates
         if (formData.dateOfBirth && formData.dateOfDeath) {
-          const birthDate = new Date(formData.dateOfBirth).toLocaleDateString('en-GB')
-          const deathDate = new Date(formData.dateOfDeath).toLocaleDateString('en-GB')
+          const birthDate = new Date(formData.dateOfBirth).toLocaleDateString('en-US')
+          const deathDate = new Date(formData.dateOfDeath).toLocaleDateString('en-US')
           ctx.font = '18px Arial, sans-serif'
           ctx.fillText(`${birthDate} - ${deathDate}`, centerX, 490)
         }
@@ -152,7 +168,7 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
         if (formData.age || formData.placeOfDeath) {
           ctx.font = '16px Arial, sans-serif'
           let infoText = ''
-          if (formData.age) infoText += `Age ${formData.age}`
+          if (formData.age) infoText += `Age ${formData.age} years`
           if (formData.age && formData.placeOfDeath) infoText += ' • '
           if (formData.placeOfDeath) infoText += formData.placeOfDeath
           ctx.fillText(infoText, centerX, 515)
@@ -166,7 +182,7 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
         ctx.lineTo(canvas.width - 50, 560)
         ctx.stroke()
         
-        // Message with wrapping
+        // Message with word wrapping
         const message = formData.customMessage
         ctx.font = '20px Arial, sans-serif'
         
@@ -190,18 +206,41 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
         }
         ctx.fillText(line.trim(), centerX, y)
         
-        // Condolence message
+        // Condolences text
         ctx.font = 'italic 36px Georgia, serif'
-        ctx.fillText('With Deepest Sympathy', centerX, y + 80)
+        ctx.fillText('Our Condolences', centerX, y + 80)
         
-        const dataURL = canvas.toDataURL('image/png')
-        setGeneratedImage(dataURL)
+        // Convert to data URL with error handling
+        setTimeout(() => {
+          try {
+            const dataURL = canvas.toDataURL('image/png', 1.0)
+            
+            // Validate the generated image
+            if (dataURL && dataURL.startsWith('data:image/png;base64,') && dataURL.length > 1000) {
+              setGeneratedImage(dataURL)
+              console.log('✅ Canvas image generated successfully, size:', Math.round(dataURL.length / 1024), 'KB')
+            } else {
+              throw new Error('Invalid image data generated')
+            }
+          } catch (imgError) {
+            console.error('Error converting canvas to image:', imgError)
+            toast.error('Error occurred while generating image. Please try again.')
+          } finally {
+            setIsGenerating(false)
+          }
+        }, 100)
+        
       } catch (error) {
-        console.error('Error generating image:', error)
-        alert('An error occurred while generating the card.')
-      } finally {
+        console.error('Error drawing on canvas:', error)
+        toast.error('Error occurred while generating card.')
         setIsGenerating(false)
       }
+    }
+
+    img.onerror = () => {
+      console.error('Error loading image for canvas')
+      toast.error('Error loading image. Please try again.')
+      setIsGenerating(false)
     }
     
     img.src = imagePreview
@@ -216,31 +255,54 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
     }
   }
 
-  const saveAndClose = () => {
-    if (generatedImage && formData.fullName) {
-      const newCard: CondolenceCard = {
-        id: Date.now().toString(),
-        name: formData.fullName,
-        imageUrl: generatedImage,
-        createdAt: new Date().toISOString()
-      }
-      
-      onCardCreated(newCard)
-      
-      // Reset form
-      setFormData({
-        fullName: '',
-        dateOfBirth: '',
-        dateOfDeath: '',
-        age: '',
-        placeOfDeath: '',
-        customMessage: 'May his/her soul be showered with mercy and placed among the righteous.'
-      })
-      setUploadedImage(null)
-      setImagePreview('')
-      setGeneratedImage('')
-      setIsOpen(false)
+  const saveToDatabase = async () => {
+    if (!generatedImage || !formData.fullName || !uploadedImage) {
+      toast.error('Please ensure all information is filled and card has been generated')
+      return
     }
+
+    setIsSaving(true)
+    
+    try {
+      console.log('💾 Saving to Supabase database...')
+      
+      const savedRecord = await databaseService.createCompleteRecord(
+        formData,
+        uploadedImage,
+        generatedImage
+      )
+      
+      console.log('✅ Record saved successfully:', savedRecord.id)
+      
+      // Notify parent component
+      onCardCreated(savedRecord)
+      
+      // Reset form and close modal
+      resetForm()
+      setIsOpen(false)
+      
+      toast.success('Condolence card has been successfully saved to database!')
+      
+    } catch (error: any) {
+      console.error('❌ Error saving to database:', error)
+      toast.error(`Error while saving: ${error.message}`)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      fullName: '',
+      dateOfBirth: '',
+      dateOfDeath: '',
+      age: '',
+      placeOfDeath: '',
+      customMessage: 'May their soul be blessed with mercy and placed among the righteous believers.'
+    })
+    setUploadedImage(null)
+    setImagePreview('')
+    setGeneratedImage('')
   }
 
   return (
@@ -253,14 +315,14 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
           </Button>
         </DialogTrigger>
         
-        <DialogContent className="w-full max-w-2xl lg:max-w-6xl max-h-[90vh] overflow-y-auto sm:rounded-lg">
+        <DialogContent className="max-w-full max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5" />
               Islamic Condolence Card Generator
             </DialogTitle>
             <DialogDescription>
-              Create a beautiful and meaningful Islamic condolence card
+              Create beautiful and meaningful Islamic condolence cards
             </DialogDescription>
           </DialogHeader>
           
@@ -269,7 +331,7 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
             <div className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Upload Photo</CardTitle>
+                  <CardTitle className="text-lg">Upload Image</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
@@ -288,7 +350,7 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
                             alt="Preview" 
                             className="w-24 h-24 object-cover rounded-full mx-auto border-2 border-white shadow-md" 
                           />
-                          <Badge variant="outline" className="text-xs">Photo selected</Badge>
+                          <Badge variant="outline" className="text-xs">Image selected</Badge>
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -296,7 +358,7 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
                             <User className="h-8 w-8 text-gray-400" />
                           </div>
                           <p className="text-blue-600 hover:text-blue-700 font-medium text-sm">
-                            Click to upload photo
+                            Click to upload image
                           </p>
                         </div>
                       )}
@@ -319,6 +381,7 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
                       value={formData.fullName}
                       onChange={handleInputChange}
                       className="mt-1"
+                      required
                     />
                   </div>
                   
@@ -359,6 +422,8 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
                         value={formData.age}
                         onChange={handleInputChange}
                         className="mt-1"
+                        min="0"
+                        max="150"
                       />
                     </div>
                     
@@ -388,6 +453,7 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
                     value={formData.customMessage}
                     onChange={handleInputChange}
                     className="resize-none text-sm"
+                    placeholder="Enter condolence message..."
                   />
                 </CardContent>
               </Card>
@@ -399,7 +465,7 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
               >
                 {isGenerating ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     Generating...
                   </>
                 ) : (
@@ -435,16 +501,26 @@ export default function CondolenceModal({ onCardCreated }: CondolenceModalProps)
                           Download
                         </Button>
                         
-                        <Button onClick={saveAndClose} className="flex-1">
-                          <Plus className="h-4 w-4 mr-2" />
-                          Save & Close
+                        <Button onClick={saveToDatabase} className="flex-1" disabled={isSaving}>
+                          {isSaving ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-4 w-4 mr-2" />
+                              Save to Database
+                            </>
+                          )}
                         </Button>
                       </div>
                     </div>
                   ) : (
                     <div className="text-center py-16 text-gray-500">
                       <Eye className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-sm">Preview will appear here</p>
+                      <p className="text-sm">Card preview will appear here</p>
+                      <p className="text-xs mt-2">Please upload an image and fill in the information first</p>
                     </div>
                   )}
                 </CardContent>
